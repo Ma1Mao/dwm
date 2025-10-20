@@ -2,6 +2,7 @@
 
 static int showsystray                   = 1;         /* 是否显示托盘栏 */
 static const int newclientathead         = 0;         /* 定义新窗口在栈顶还是栈底 */
+static const int managetransientwin      = 1;         /* 是否管理临时窗口 */
 static const unsigned int borderpx       = 2;         /* 窗口边框大小 */
 static const unsigned int systraypinning = 1;         /* 托盘跟随的显示器 0代表不指定显示器 */
 static const unsigned int systrayspacing = 1;         /* 托盘间距 */
@@ -12,8 +13,6 @@ static const int _gappo                  = 12;        /* 窗口与窗口 缝隙�
 static const int _gappi                  = 12;        /* 窗口与边缘 缝隙大小 不可变 用于恢复时的默认值 */
 static const int vertpad                 = 5;         /* vertical padding of bar */
 static const int sidepad                 = 5;         /* horizontal padding of bar */
-static const int overviewgappi           = 24;        /* overview时 窗口与边缘 缝隙大小 */
-static const int overviewgappo           = 60;        /* overview时 窗口与窗口 缝隙大小 */
 static const int showbar                 = 1;         /* 是否显示状态栏 */
 static const int topbar                  = 1;         /* 指定状态栏位置 0底部 1顶部 */
 static const float mfact                 = 0.6;       /* 主工作区 大小比例 */
@@ -21,7 +20,7 @@ static const int   nmaster               = 1;         /* 主工作区 窗口数�
 static const unsigned int snap           = 10;        /* 边缘依附宽度 */
 static const unsigned int baralpha       = 0xc0;      /* 状态栏透明度 */
 static const unsigned int borderalpha    = 0xdd;      /* 边框透明度 */
-static const char *fonts[]               = { "JetBrainsMono Nerd Font:style=medium:size=13", "monospace:size=13" };
+static const char *fonts[]               = { "JetBrainsMono Nerd Font Mono:style=medium:size=13", "monospace:size=13" };
 static const char *colors[][3]           = {          /* 颜色设置 ColFg, ColBg, ColBorder */ 
     [SchemeNorm] = { "#bbbbbb", "#333333", "#444444" },
     [SchemeSel] = { "#ffffff", "#37474F", "#42A5F5" },
@@ -39,8 +38,8 @@ static const unsigned int alphas[][3]    = {          /* 透明度设置 ColFg, 
     [SchemeSelGlobal] = { OPAQUE, baralpha, borderalpha },
     [SchemeNormTag] = { OPAQUE, baralpha, borderalpha }, 
     [SchemeSelTag] = { OPAQUE, baralpha, borderalpha },
-    [SchemeBarEmpty] = { NULL, 0x11, NULL },
-    [SchemeStatusText] = { OPAQUE, 0x88, NULL },
+    [SchemeBarEmpty] = { 0, 0x11, 0 },
+    [SchemeStatusText] = { OPAQUE, 0x88, 0 },
 };
 
 /* 自定义脚本位置 */
@@ -76,8 +75,11 @@ static const char *tags[] = {
 static const Rule rules[] = {
     /* class                 instance              title             tags mask     isfloating  isglobal    isnoborder monitor floatposition */
     /** 优先级高 越在上面优先度越高 */
+    { NULL,                  NULL,                "保存文件",        0,            1,          0,          0,        -1,      0}, // 浏览器保存文件      浮动
     { NULL,                  NULL,                "图片查看器",      0,            1,          0,          0,        -1,      0}, // qq图片查看器        浮动
     { NULL,                  NULL,                "图片查看",        0,            1,          0,          0,        -1,      0}, // 微信图片查看器      浮动
+    { NULL,                  NULL,                "预览",            0,            1,          0,          0,        -1,      0}, // 企业微信图片查看器  浮动
+    { NULL,                  NULL,                "Media viewer",    0,            1,          0,          0,        -1,      0}, // tg图片查看器        浮动
 
     /** 普通优先度 */
     {"obs",                  NULL,                 NULL,             1 << 3,       0,          0,          0,        -1,      0}, // obs        tag -> 󰕧
@@ -92,6 +94,7 @@ static const Rule rules[] = {
     {"scratchpad",          "scratchpad",         "scratchpad",      TAGMASK,      1,          1,          1,        -1,      2}, // scratchpad          浮动、全局、无边框 屏幕顶部
     {"Pcmanfm",              NULL,                 NULL,             0,            1,          0,          1,        -1,      3}, // pcmanfm             浮动、无边框 右上角
     {"wemeetapp",            NULL,                 NULL,             TAGMASK,      1,          1,          0,        -1,      0}, // !!!腾讯会议在切换tag时有诡异bug导致退出 变成global来规避该问题
+    { NULL,                  NULL,                "wechat",          TAGMASK,      0,          0,          1,        -1,      0}, // wechat相关的子窗口，去掉边框
 
     /** 部分特殊class的规则 */
     {"float",                NULL,                 NULL,             0,            1,          0,          0,        -1,      0}, // class = float       浮动
@@ -106,8 +109,6 @@ static const Rule rules[] = {
     { NULL,                  NULL,                "crx_",            0,            1,          0,          0,        -1,      0}, // 错误载入时 会有crx_ 浮动
     { NULL,                  NULL,                "broken",          0,            1,          0,          0,        -1,      0}, // 错误载入时 会有broken 浮动
 };
-static const char *overviewtag = "OVERVIEW";
-static const Layout overviewlayout = { "舘",  overview };
 
 /* 自定义布局 */
 static const Layout layouts[] = {
@@ -136,7 +137,7 @@ static Key keys[] = {
     { MODKEY|ShiftMask,    XK_Left,         tagtoleft,        {0} },                     /* super shift left   |  将本窗口移动到左边tag */
     { MODKEY|ShiftMask,    XK_Right,        tagtoright,       {0} },                     /* super shift right  |  将本窗口移动到右边tag */
 
-    { MODKEY,              XK_a,            toggleoverview,   {0} },                     /* super a            |  显示所有tag 或 跳转到聚焦窗口的tag */
+    { MODKEY,              XK_a,            previewallwin,    {0} },                     /* super a            |  overview */
 
     { MODKEY,              XK_comma,        setmfact,         {.f = -0.05} },            /* super ,            |  缩小主工作区 */
     { MODKEY,              XK_period,       setmfact,         {.f = +0.05} },            /* super .            |  放大主工作区 */
@@ -211,8 +212,6 @@ static Key keys[] = {
     TAGKEYS(XK_c, 4, "google-chrome-stable")
     TAGKEYS(XK_m, 5, "~/scripts/music_player.sh")
     TAGKEYS(XK_0, 6, "linuxqq")
-    TAGKEYS(XK_w, 7, "/opt/apps/com.qq.weixin.deepin/files/run.sh")
-    TAGKEYS(XK_y, 8, "/opt/apps/com.qq.weixin.work.deepin/files/run.sh")
 };
 
 static Button buttons[] = {
@@ -239,4 +238,16 @@ static Button buttons[] = {
     /* 点击bar空白处 */
     { ClkBarEmpty,         0,               Button1,          spawn, SHCMD("~/scripts/call_rofi.sh window") },        // 左键        |  bar空白处    |  rofi 执行 window
     { ClkBarEmpty,         0,               Button3,          spawn, SHCMD("~/scripts/call_rofi.sh drun") },          // 右键        |  bar空白处    |  rofi 执行 drun
+                                                                                                                      //
+    /* 鼠标在空白处或任意窗口上 上下滚动 切换tag */
+    { ClkRootWin,          MODKEY,          Button4,          viewtoleft,    {0} },                                   // super+滚轮上  |  Any          |  向前切换tag
+    { ClkRootWin,          MODKEY,          Button5,          viewtoright,   {0} },                                   // super+滚轮下  |  Any          |  向后切换tag
+    { ClkWinTitle,         MODKEY,          Button4,          viewtoleft,    {0} },                                   // super+滚轮上  |  Any          |  向前切换tag
+    { ClkWinTitle,         MODKEY,          Button5,          viewtoright,   {0} },                                   // super+滚轮下  |  Any          |  向后切换tag
+    { ClkClientWin,        MODKEY,          Button4,          viewtoleft,    {0} },                                   // super+滚轮上  |  Any          |  向前切换tag
+    { ClkClientWin,        MODKEY,          Button5,          viewtoright,   {0} },                                   // super+滚轮下  |  Any          |  向后切换tag
+    { ClkTagBar,           MODKEY,          Button4,          viewtoleft,    {0} },                                   // super+滚轮上  |  Any          |  向前切换tag
+    { ClkTagBar,           MODKEY,          Button5,          viewtoright,   {0} },                                   // super+滚轮下  |  Any          |  向后切换tag
+    { ClkStatusText,       MODKEY,          Button4,          viewtoleft,    {0} },                                   // super+滚轮上  |  Any          |  向前切换tag
+    { ClkStatusText,       MODKEY,          Button5,          viewtoright,   {0} },                                   // super+滚轮下  |  Any          |  向后切换tag
 };
